@@ -17,19 +17,19 @@ type node struct {
 	Content  string
 }
 
-func decode(path string) *node {
+func decode(path string) (*node, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("Could not open file: %v", err)
 	}
 	defer f.Close()
 
 	archive, err := asar.Decode(f)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("Could not decode archive: %v", err)
 	}
 
-	return toMemory(archive)
+	return toMemory(archive), nil
 }
 
 func toMemory(e *asar.Entry) *node {
@@ -57,10 +57,10 @@ func populate(n *node, entries *asar.Builder) {
 	}
 }
 
-func encodeTo(archive *node, asarFileName string) {
+func encodeTo(archive *node, asarFileName string) error {
 	asarArchive, err := os.Create(asarFileName)
 	if err != nil {
-		panic("could not open file")
+		return fmt.Errorf("could not open file: %v", err)
 	}
 	defer asarArchive.Close()
 
@@ -68,9 +68,9 @@ func encodeTo(archive *node, asarFileName string) {
 
 	populate(archive, &entries)
 	if _, err := entries.Root().EncodeTo(asarArchive); err != nil {
-		fmt.Fprintf(os.Stderr, "Couldn't make: %s\nError was %v\n", asarFileName, err)
-		os.Exit(1)
+		return fmt.Errorf("could not create: %s, the error was %v", asarFileName, err)
 	}
+	return nil
 }
 
 func modify(n *node) {
@@ -93,7 +93,13 @@ func main() {
 	path := strings.ReplaceAll(os.Getenv("APPDATA"), "Roaming", "") + "Local\\Blitz\\current\\resources\\app.asar"
 	log.Printf("Patch archive in %v", path)
 
-	archive := decode(path)
+	archive, err := decode(path)
+	if err != nil {
+		log.Fatalf("Archive could not be decoded: %v", err)
+	}
 	modify(archive)
-	encodeTo(archive, path)
+	err = encodeTo(archive, path)
+	if err != nil {
+		log.Fatalf("Archive could not be encoded: %v", err)
+	}
 }
