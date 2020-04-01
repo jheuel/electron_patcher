@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -12,9 +13,10 @@ import (
 type node struct {
 	Name     string
 	IsDir    bool
+	Flag     asar.Flag
 	Parent   *node
 	Children []*node
-	Content  string
+	Content  []byte
 }
 
 func decode(path string) (*node, error) {
@@ -36,7 +38,8 @@ func toMemory(e *asar.Entry) *node {
 	n := &node{}
 	n.Name = e.Name
 	n.IsDir = e.Flags&asar.FlagDir != 0
-	n.Content = e.String()
+	n.Content = e.Bytes()
+	n.Flag = e.Flags
 	for _, c := range e.Children {
 		child := toMemory(c)
 		child.Parent = n
@@ -52,7 +55,7 @@ func populate(n *node, entries *asar.Builder) {
 			populate(c, e)
 			entries.Parent()
 		} else {
-			entries.AddString(c.Name, c.Content, asar.FlagNone)
+			entries.Add(c.Name, bytes.NewReader(c.Content), int64(len(c.Content)), c.Flag)
 		}
 	}
 }
@@ -75,13 +78,12 @@ func encodeTo(archive *node, asarFileName string) error {
 
 func modify(n *node) {
 	replaceMap := map[string]string{
-		"mainWindow.show();":    "1+1;",
-		"mainWindow.focus();":   "1+1;",
-		"mainWindow.restore();": "1+1;",
+		"mainWindow.show();":  "1+1;",
+		"mainWindow.focus();": "1+1;",
 	}
 	if strings.HasSuffix(n.Name, ".js") {
 		for k, v := range replaceMap {
-			n.Content = strings.ReplaceAll(n.Content, k, v)
+			n.Content = []byte(strings.ReplaceAll(string(n.Content), k, v))
 		}
 	}
 	for _, c := range n.Children {
